@@ -110,11 +110,10 @@ def _fmt(sec) -> str:
 
 
 def progress_bar(played, duration, width: int = 12) -> str:
-    """01:18 ━━●─────────  06:43"""
+    """01:18  ●●○○○○○○○○○○  06:43"""
     ratio = min(max(played / duration, 0), 1) if duration else 0
-    pos = min(int(ratio * width), width - 1)
-    bar = "━" * pos + "●" + "─" * (width - pos - 1)
-    return f"{_fmt(played)}  {bar}  {_fmt(duration)}"
+    done = min(max(round(ratio * width), 0), width)
+    return f"{_fmt(played)}  {'●' * done}{'○' * (width - done)}  {_fmt(duration)}"
 
 
 def _rand_styles(n: int) -> list:
