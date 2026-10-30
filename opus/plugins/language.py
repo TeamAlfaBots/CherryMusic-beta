@@ -6,7 +6,7 @@
 from pyrogram import filters, types
 
 from opus import app, db, lang
-from opus.helpers import admin_check, buttons
+from opus.helpers import admin_check, buttons, rich
 
 
 @app.on_message(filters.command(["lang", "language"]) & ~app.bl_users)
@@ -25,6 +25,8 @@ async def _lang_cb(_, query: types.CallbackQuery):
     if data[0] == "language":
         current = await db.get_lang(query.message.chat.id)
         keyboard = buttons.lang_markup(current)
+        if await rich.edit_menu(query, keyboard, query.lang["lang_choose"]):
+            return
         return await query.edit_message_text(
             query.lang["lang_choose"], reply_markup=keyboard
         )
@@ -38,4 +40,7 @@ async def _lang_cb(_, query: types.CallbackQuery):
 
     await query.answer(query.lang["lang_change"].format(_lang), show_alert=True)
     await db.set_lang(query.message.chat.id, _lang)
+    if await rich.edit_menu(query, None, query.lang["lang_changed"].format(_lang)):
+        return
     await query.edit_message_text(query.lang["lang_changed"].format(_lang))
+    
