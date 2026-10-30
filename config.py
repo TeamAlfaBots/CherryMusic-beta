@@ -1,0 +1,68 @@
+from os import getenv
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class Config:
+    def __init__(self):
+        self.API_ID = int(getenv("API_ID", 0))
+        self.API_HASH = getenv("API_HASH")
+
+        self.BOT_TOKEN = getenv("BOT_TOKEN")
+        self.MONGO_URL = getenv("MONGO_URL")
+
+        self.LOGGER_ID = int(getenv("LOGGER_ID", 0))
+        self.OWNER_ID = list(map(int, getenv("OWNER_ID", "").split(",")))
+
+        self.DURATION_LIMIT = int(getenv("DURATION_LIMIT", 60)) * 60
+        self.QUEUE_LIMIT = int(getenv("QUEUE_LIMIT", 20))
+        self.PLAYLIST_LIMIT = int(getenv("PLAYLIST_LIMIT", 20))
+        self.STICKER_ID = getenv("STICKER_ID", "")
+        self.SESSION1 = getenv("SESSION", None)
+        self.SESSION2 = getenv("SESSION2", None)
+        self.SESSION3 = getenv("SESSION3", None)
+
+        self.SUPPORT_CHANNEL = getenv("SUPPORT_CHANNEL", "https://t.me/Alfabots_update")
+        self.SUPPORT_CHAT = getenv("SUPPORT_CHAT", "https://t.me/Alfabots_support")
+
+        self.AUTO_LEAVE: bool = getenv("AUTO_LEAVE", "False").lower() == "true"
+        self.AUTO_END: bool = getenv("AUTO_END", "False").lower() == "true"
+    
+        self.THUMB_GEN: bool = getenv("THUMB_GEN", "True").lower() == "true"
+        self.VIDEO_PLAY: bool = getenv("VIDEO_PLAY", "True").lower() == "true"
+
+        self.LANG_CODE = getenv("LANG_CODE", "en")
+
+        self.COOKIES_URL = [
+            url for url in getenv("COOKIES_URL", "").split(" ")
+            if url and "batbin.me" in url
+        ]
+        self.DEFAULT_THUMB = getenv("DEFAULT_THUMB", "https://te.legra.ph/file/3e40a408286d4eda24191.jpg")
+        self.PING_IMG = getenv("PING_IMG", "https://files.catbox.moe/ynwsxi.png")
+        self.START_IMG = getenv("START_IMG", "").split()
+        self.START_VIDEO = getenv("START_VIDEO", "").split()
+
+        # Turso cache DBs — song bytes yahan cache hote hain taaki
+        # download API ka daily limit baar baar hit na ho. Har DB ka
+        # URL + token alag env var mein: TURSO_URL_1/TURSO_TOKEN_1,
+        # TURSO_URL_2/TURSO_TOKEN_2. Jitni bhi pairs milen (donon
+        # values set hon) utni hi list mein aayengi — koi pair
+        # missing/empty ho to bas skip ho jayega.
+        self.TURSO_DATABASES = [
+            {"url": url, "token": token}
+            for url, token in (
+                (getenv("TURSO_URL_1"), getenv("TURSO_TOKEN_1")),
+                (getenv("TURSO_URL_2"), getenv("TURSO_TOKEN_2")),
+            )
+            if url and token
+        ]
+
+    def check(self):
+        missing = [
+            var
+            for var in ["API_ID", "API_HASH", "BOT_TOKEN", "MONGO_URL", "LOGGER_ID", "OWNER_ID", "SESSION1"]
+            if not getattr(self, var)
+        ]
+        if missing:
+            raise SystemExit(f"Missing required environment variables: {', '.join(missing)}")
+            

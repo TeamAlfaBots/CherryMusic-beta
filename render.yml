@@ -1,0 +1,34 @@
+services:
+  - type: worker
+    name: opusmusic
+    runtime: python
+    repo: https://github.com/TeamAlfaBots/OpusMusic
+    branch: master
+    buildCommand: |
+      pip install uv
+      uv sync --frozen
+    startCommand: uv run python3 -m opus
+    envVars:
+      - key: API_ID
+        sync: false
+
+      - key: API_HASH
+        sync: false
+
+      - key: BOT_TOKEN
+        sync: false
+
+      - key: OWNER_ID
+        sync: false
+
+      - key: LOGGER_ID
+        sync: false
+
+      - key: MONGO_URL
+        sync: false
+
+      - key: SESSION
+        sync: false
+
+      - key: PYTHON_VERSION
+        value: "3.12.0"
