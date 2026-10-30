@@ -114,6 +114,14 @@ async def _controls(_, query: types.CallbackQuery):
             pass
         return
 
+    elif action == "delete":
+        rich.clear(chat_id)
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        return
+
     elif action == "stop":
         await anon.stop(chat_id)
         status = query.lang["stopped"]
@@ -213,6 +221,8 @@ async def _settings_cb(_, query: types.CallbackQuery):
 async def source_menu_cb(_, query: types.CallbackQuery):
     """Source button click - submenu dikhaye"""
     await query.answer(query.lang.get("processing", "📂 Source Menu"), show_alert=True)
+    if await rich.edit_menu(query, buttons.source_markup(query.lang)):
+        return
     await query.edit_message_reply_markup(
         reply_markup=buttons.source_markup(query.lang)
     )
@@ -223,6 +233,8 @@ async def source_menu_cb(_, query: types.CallbackQuery):
 async def source_back_cb(_, query: types.CallbackQuery):
     """Back button - wapas start menu pe le jaye"""
     await query.answer(query.lang.get("back", "🔙 Back"))
+    if await rich.edit_menu(query, buttons.start_key(query.lang, private=True)):
+        return
     await query.edit_message_reply_markup(
         reply_markup=buttons.start_key(query.lang, private=True)
         )
