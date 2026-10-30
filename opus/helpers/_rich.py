@@ -8,6 +8,7 @@
 # the caller falls back to the old inline-keyboard player.
 
 import html as _html
+import logging
 import re
 import time
 
@@ -15,18 +16,29 @@ from pyrogram import enums, errors, types
 
 from opus import app, db
 
-RICH_OK = all(
-    hasattr(types, name)
-    for name in (
-        "InputRichMessage",
-        "InputRichBlockPhoto",
-        "InputRichBlockParagraph",
-        "InputRichBlockButtons",
-        "RichMessageButton",
-        "RichTextBold",
-        "RichTextUrl",
+logger = logging.getLogger(__name__)
+
+_NEEDED = (
+    "InputRichMessage",
+    "InputRichBlockPhoto",
+    "InputRichBlockParagraph",
+    "InputRichBlockButtons",
+    "RichMessageButton",
+    "RichTextBold",
+    "RichTextUrl",
+    "RichTextCode",
+)
+_MISSING = [n for n in _NEEDED if not hasattr(types, n)]
+if not hasattr(app, "send_rich_message"):
+    _MISSING.append("Client.send_rich_message")
+RICH_OK = not _MISSING
+if RICH_OK:
+    logger.info("[Rich] Rich Message player ENABLED")
+else:
+    logger.warning(
+        "[Rich] Rich Message player DISABLED - installed Pyrogram fork is "
+        "missing: %s. Using the old inline-keyboard player.", ", ".join(_MISSING)
     )
-) and hasattr(app, "send_rich_message")
 
 _FORBIDDEN = (errors.ChatSendPhotosForbidden, errors.ChatSendMediaForbidden)
 _KEEP = object()  # "leave the stored value as it is"
@@ -37,11 +49,11 @@ _BQ_RE = re.compile(r"</?blockquote[^>]*>", re.IGNORECASE)
 _np: dict[int, dict] = {}
 
 _DEFAULT_LABELS = {
-    "rich_replay": "⥁ ʀᴇᴘʟᴀʏ",
-    "rich_pause": "II ᴘᴀᴜꜱᴇ",
-    "rich_resume": "▷ ʀᴇꜱᴜᴍᴇ",
-    "rich_skip": "‣‣I ꜱᴋɪᴘ",
-    "rich_end": "▢ ᴇɴᴅ",
+    "rich_replay": "⥁",
+    "rich_pause": "II",
+    "rich_resume": "▷",
+    "rich_skip": "‣‣I",
+    "rich_end": "▢",
 }
 
 S = enums.ButtonStyle
@@ -123,7 +135,7 @@ async def _blocks(chat_id, lang, st, *, timer=None, status=None, remove=False):
         else _btn(t("rich_resume"), f"controls resume {chat_id}", S.SUCCESS)
     )
     ap_on = await is_autoplay(chat_id)
-    ap_text = "ᴀᴜᴛᴏᴘʟᴀʏ: ᴏɴ ✔️" if ap_on else "ᴀᴜᴛᴏᴘʟᴀʏ: ᴏꜰꜰ ❌"
+    ap_text = "ᴀᴜᴛᴏᴘʟᴀʏ: ᴏɴ ✅" if ap_on else "ᴀᴜᴛᴏᴘʟᴀʏ: ᴏꜰꜰ ❌"
     blocks += [
         types.InputRichBlockButtons(
             buttons=[
@@ -193,7 +205,9 @@ async def send_player(chat_id, message, photo, caption_html, lang):
             except Exception:
                 pass
             sent = await _send(chat_id, blocks)
-    except Exception:
+    except Exception as e:
+        logger.warning("[Rich] send_player failed in %s: %r - falling back", chat_id, e,
+                       exc_info=True)
         return None
     st["msg"] = sent
     st["last"] = time.monotonic()
@@ -221,7 +235,8 @@ async def update(chat_id, *, message_id=None, note=_KEEP, status=None,
         await _edit(msg, blocks)
     except errors.MessageNotModified:
         pass
-    except Exception:
+    except Exception as e:
+        logger.warning("[Rich] update failed in %s: %r", chat_id, e)
         return False
     st["last"] = time.monotonic()
     return True
@@ -229,3 +244,4 @@ async def update(chat_id, *, message_id=None, note=_KEEP, status=None,
 
 def clear(chat_id):
     _np.pop(chat_id, None)
+    
