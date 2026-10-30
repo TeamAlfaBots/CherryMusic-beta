@@ -25,3 +25,4 @@ async def _pause(_, m: types.Message):
         text=m.lang["play_paused"].format(m.from_user.mention),
         reply_markup=buttons.controls(m.chat.id),
     )
+    
