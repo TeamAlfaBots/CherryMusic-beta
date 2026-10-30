@@ -10,7 +10,7 @@ from pyrogram import enums, filters, types
 from pyrogram.errors import PeerIdInvalid, ChatWriteForbidden
 
 from opus import app, config, db, lang
-from opus.helpers import buttons, utils
+from opus.helpers import buttons, rich, utils
 
 # ── Optional config ───────────────────────────────────────────────────────────
 STICKER_ID: str | None = getattr(config, "STICKER_ID", None)
@@ -179,11 +179,16 @@ async def start(_, message: types.Message):
     # 6. Buttons
     key = buttons.start_key(message.lang, private)
 
-    # 7. Video → photo → text fallback chain
+    # 7. Rich Message start (photo + text + colored buttons); classic chain
+    #    below is the fallback if rich is unavailable or fails.
     sent = None
-    start_video = get_start_video()
+    if rich.RICH_OK and rich.START_ENABLED:
+        sent = await rich.send_menu(message.chat.id, get_start_img(), _text, key)
+
+    # 7b. Video → photo → text fallback chain
+    start_video = get_start_video() if sent is None else None
     print(f"[DEBUG] get_start_video() returned: {start_video!r}")
-    if start_video:
+    if sent is None and start_video:
         try:
             sent = await message.reply_video(
                 video=start_video,
@@ -253,4 +258,4 @@ async def _new_member(_, message: types.Message):
                 return
             await utils.send_log(message, True)
             await db.add_chat(message.chat.id)
-            
+
