@@ -296,22 +296,31 @@ def _markup_blocks(markup) -> list:
 
 def _menu_blocks(st, markup) -> list:
     blocks = []
-    if st.get("photo"):
+    if st.get("video") and hasattr(types, "InputRichBlockVideo"):
+        blocks.append(types.InputRichBlockVideo(video=types.InputMediaVideo(st["video"])))
+    elif st.get("photo"):
         blocks.append(types.InputRichBlockPhoto(photo=types.InputMediaPhoto(st["photo"])))
     blocks += _paragraphs(st["caption"])
     return blocks + _markup_blocks(markup)
 
 
-async def send_menu(chat_id, photo, caption_html, markup):
-    """Send a rich menu message (photo + text + buttons). None on failure."""
+async def send_menu(chat_id, photo, caption_html, markup, video=None):
+    """Send a rich menu message (video/photo + text + buttons). Tries the video
+    first, then the photo. None if both fail (caller uses the classic start)."""
     if not (RICH_OK and START_ENABLED):
         return None
-    st = {"photo": photo, "caption": caption_html}
-    try:
-        sent = await _send(chat_id, _menu_blocks(st, markup))
-    except Exception as e:
-        logger.warning("[Rich] send_menu failed in %s: %r - falling back", chat_id, e,
-                       exc_info=True)
+    st = {"photo": photo, "video": video, "caption": caption_html}
+    sent = None
+    for use_video in ((True, False) if video else (False,)):
+        if not use_video:
+            st["video"] = None
+        try:
+            sent = await _send(chat_id, _menu_blocks(st, markup))
+            break
+        except Exception as e:
+            logger.warning("[Rich] send_menu (%s) failed in %s: %r",
+                           "video" if use_video else "photo", chat_id, e)
+    if sent is None:
         return None
     if len(_menus) > 500:
         _menus.pop(next(iter(_menus)))
