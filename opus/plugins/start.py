@@ -183,7 +183,9 @@ async def start(_, message: types.Message):
     #    below is the fallback if rich is unavailable or fails.
     sent = None
     if rich.RICH_OK and rich.START_ENABLED:
-        sent = await rich.send_menu(message.chat.id, get_start_img(), _text, key)
+        sent = await rich.send_menu(
+            message.chat.id, get_start_img(), _text, key, video=get_start_video()
+        )
 
     # 7b. Video → photo → text fallback chain
     start_video = get_start_video() if sent is None else None
