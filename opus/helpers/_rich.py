@@ -2,19 +2,21 @@
 # Licensed under the MIT License.
 # This file is part of OpusMusic
 #
-# Now-playing player built with Telegram Rich Messages (Bot API 10.1+).
-# If the installed Pyrogram fork has no rich-message support (RICH_OK is
-# False) or a rich call fails, every public function returns None/False so
-# the caller falls back to the old inline-keyboard player.
+# Now-playing player + start menu built with Telegram Rich Messages
+# (Bot API 10.1+). If the installed Pyrogram fork has no rich-message
+# support (RICH_OK is False) or a rich call fails, every public function
+# returns None/False so the caller falls back to the classic inline player.
 
 import html as _html
 import logging
+import os
+import random
 import re
 import time
 
 from pyrogram import enums, errors, types
 
-from opus import app, db
+from opus import app
 
 logger = logging.getLogger(__name__)
 
@@ -40,23 +42,22 @@ else:
         "missing: %s. Using the old inline-keyboard player.", ", ".join(_MISSING)
     )
 
+# seconds between rich player refreshes (each refresh re-uploads the thumbnail
+# and re-rolls the button colors). RICH_TIMER_GAP env var overrides.
+TIMER_GAP = int(os.getenv("RICH_TIMER_GAP", "12"))
+# set RICH_START=0 to keep the classic /start message
+START_ENABLED = os.getenv("RICH_START", "1") != "0"
+
 _FORBIDDEN = (errors.ChatSendPhotosForbidden, errors.ChatSendMediaForbidden)
 _KEEP = object()  # "leave the stored value as it is"
 _TAG_RE = re.compile(r"<(/?)(b|a|code)(?:\s+href=([^>]+))?>", re.IGNORECASE)
 _BQ_RE = re.compile(r"</?blockquote[^>]*>", re.IGNORECASE)
 
-# chat_id -> state of the live now-playing message
-_np: dict[int, dict] = {}
-
-_DEFAULT_LABELS = {
-    "rich_replay": "⥁",
-    "rich_pause": "II",
-    "rich_resume": "▷",
-    "rich_skip": "‣‣I",
-    "rich_end": "▢",
-}
-
 S = enums.ButtonStyle
+_COLORS = (S.PRIMARY, S.SUCCESS, S.DANGER)
+
+_np: dict[int, dict] = {}  # chat_id -> live now-playing state
+_menus: dict[tuple, dict] = {}  # (chat_id, message_id) -> rich menu state
 
 
 # --------------------------------------------------------------------------
@@ -99,13 +100,44 @@ def _paragraphs(html_text: str) -> list:
 
 
 # --------------------------------------------------------------------------
-# Blocks
+# Progress bar + random colors
 # --------------------------------------------------------------------------
-def _btn(text, data, style):
-    return types.RichMessageButton(text=text, style=style, callback_data=data)
+def _fmt(sec) -> str:
+    sec = int(max(sec or 0, 0))
+    m, s = divmod(sec, 60)
+    h, m = divmod(m, 60)
+    return f"{h}:{m:02d}:{s:02d}" if h else f"{m:02d}:{s:02d}"
 
 
-async def _blocks(chat_id, lang, st, *, timer=None, status=None, remove=False):
+def progress_bar(played, duration, width: int = 12) -> str:
+    """01:18 ━━●─────────  06:43"""
+    ratio = min(max(played / duration, 0), 1) if duration else 0
+    pos = min(int(ratio * width), width - 1)
+    bar = "━" * pos + "●" + "─" * (width - pos - 1)
+    return f"{_fmt(played)}  {bar}  {_fmt(duration)}"
+
+
+def _rand_styles(n: int) -> list:
+    for _ in range(10):
+        styles = [random.choice(_COLORS) for _ in range(n)]
+        if len(set(styles)) > 1:
+            break
+    return styles
+
+
+def _btn(text, style, data=None, url=None):
+    kw = {"text": text, "style": style}
+    if url:
+        kw["url"] = url
+    else:
+        kw["callback_data"] = data
+    return types.RichMessageButton(**kw)
+
+
+# --------------------------------------------------------------------------
+# Player blocks
+# --------------------------------------------------------------------------
+async def _blocks(chat_id, st, *, status=None, remove=False):
     from opus.plugins.autoplay import is_autoplay
 
     blocks = []
@@ -115,41 +147,36 @@ async def _blocks(chat_id, lang, st, *, timer=None, status=None, remove=False):
     if st.get("note"):
         blocks += _paragraphs(st["note"])
 
-    top = status or timer
-    if top:
+    c = _rand_styles(8)
+    duration = st.get("duration") or 0
+    top = status or (progress_bar(st.get("played", 0), duration) if duration else None)
+    if top:  # row 1: progress bar
         blocks.append(
             types.InputRichBlockButtons(
-                buttons=[_btn(top, f"controls status {chat_id}", S.PRIMARY)]
+                buttons=[_btn(top, c[0], f"controls status {chat_id}")]
             )
         )
     if remove:
         return blocks
 
-    def t(key):
-        return lang.get(key, _DEFAULT_LABELS[key])
-
-    playing = await db.playing(chat_id)
-    toggle = (
-        _btn(t("rich_pause"), f"controls pause {chat_id}", S.PRIMARY)
-        if playing
-        else _btn(t("rich_resume"), f"controls resume {chat_id}", S.SUCCESS)
-    )
     ap_on = await is_autoplay(chat_id)
     ap_text = "ᴀᴜᴛᴏᴘʟᴀʏ: ᴏɴ ✅" if ap_on else "ᴀᴜᴛᴏᴘʟᴀʏ: ᴏꜰꜰ ❌"
+    row2 = (("▷", "resume"), ("II", "pause"), ("⥁", "replay"), ("‣‣I", "skip"), ("▢", "stop"))
     blocks += [
+        # row 2: player controls
         types.InputRichBlockButtons(
             buttons=[
-                _btn(t("rich_replay"), f"controls replay {chat_id}", S.PRIMARY),
-                toggle,
-                _btn(t("rich_skip"), f"controls skip {chat_id}", S.PRIMARY),
+                _btn(label, c[1 + i], f"controls {act} {chat_id}")
+                for i, (label, act) in enumerate(row2)
             ]
         ),
+        # row 3: autoplay
         types.InputRichBlockButtons(
-            buttons=[
-                _btn(t("rich_end"), f"controls stop {chat_id}", S.DANGER),
-                _btn(ap_text, f"controls autoplay {chat_id}",
-                     S.SUCCESS if ap_on else S.DANGER),
-            ]
+            buttons=[_btn(ap_text, c[6], f"controls autoplay {chat_id}")]
+        ),
+        # row 4: delete this player message
+        types.InputRichBlockButtons(
+            buttons=[_btn("ᴅᴇʟᴇᴛᴇ 🗑", c[7], f"controls delete {chat_id}")]
         ),
     ]
     return blocks
@@ -186,15 +213,15 @@ async def _send(chat_id, blocks):
         )
 
 
-async def send_player(chat_id, message, photo, caption_html, lang):
+async def send_player(chat_id, message, photo, caption_html, lang, duration=0):
     """Turn `message` (placeholder) into the rich player. Returns the Message
     that now holds the player, or None if rich is unavailable / failed."""
     if not RICH_OK:
         return None
-    st = {"photo": photo, "caption": caption_html, "note": None,
-          "msg": message, "lang": lang, "last": 0.0}
+    st = {"photo": photo, "caption": caption_html, "note": None, "msg": message,
+          "lang": lang, "last": 0.0, "played": 0, "duration": duration}
     try:
-        blocks = await _blocks(chat_id, lang, st)
+        blocks = await _blocks(chat_id, st)
         try:
             sent = await _edit(message, blocks) or message
         except errors.MessageNotModified:
@@ -216,9 +243,9 @@ async def send_player(chat_id, message, photo, caption_html, lang):
 
 
 async def update(chat_id, *, message_id=None, note=_KEEP, status=None,
-                 timer=None, remove=False, min_gap=0):
-    """Re-render the rich player. True = handled, False = caller should
-    use the old inline-keyboard path."""
+                 played=None, duration=None, remove=False, min_gap=0):
+    """Re-render the rich player (new progress, new random colors).
+    True = handled, False = caller should use the old inline-keyboard path."""
     st = _np.get(chat_id)
     if not RICH_OK or not st:
         return False
@@ -229,10 +256,12 @@ async def update(chat_id, *, message_id=None, note=_KEEP, status=None,
         return True  # handled: just skipped this tick
     if note is not _KEEP:
         st["note"] = note
+    if played is not None:
+        st["played"] = played
+    if duration:
+        st["duration"] = duration
     try:
-        blocks = await _blocks(chat_id, st["lang"], st, timer=timer,
-                               status=status, remove=remove)
-        await _edit(msg, blocks)
+        await _edit(msg, await _blocks(chat_id, st, status=status, remove=remove))
     except errors.MessageNotModified:
         pass
     except Exception as e:
@@ -244,4 +273,68 @@ async def update(chat_id, *, message_id=None, note=_KEEP, status=None,
 
 def clear(chat_id):
     _np.pop(chat_id, None)
+
+
+# --------------------------------------------------------------------------
+# Rich menus (/start + its sub-menus), converted from InlineKeyboardMarkup
+# --------------------------------------------------------------------------
+def _markup_blocks(markup) -> list:
+    rows = []
+    for row in getattr(markup, "inline_keyboard", None) or []:
+        btns = []
+        for b in row:
+            style = getattr(b, "style", None) or random.choice(_COLORS)
+            if getattr(b, "url", None):
+                btns.append(_btn(b.text, style, url=b.url))
+            elif getattr(b, "callback_data", None):
+                data = b.callback_data
+                btns.append(_btn(b.text, style, data=data.decode() if isinstance(data, bytes) else data))
+        if btns:
+            rows.append(types.InputRichBlockButtons(buttons=btns))
+    return rows
+
+
+def _menu_blocks(st, markup) -> list:
+    blocks = []
+    if st.get("photo"):
+        blocks.append(types.InputRichBlockPhoto(photo=types.InputMediaPhoto(st["photo"])))
+    blocks += _paragraphs(st["caption"])
+    return blocks + _markup_blocks(markup)
+
+
+async def send_menu(chat_id, photo, caption_html, markup):
+    """Send a rich menu message (photo + text + buttons). None on failure."""
+    if not (RICH_OK and START_ENABLED):
+        return None
+    st = {"photo": photo, "caption": caption_html}
+    try:
+        sent = await _send(chat_id, _menu_blocks(st, markup))
+    except Exception as e:
+        logger.warning("[Rich] send_menu failed in %s: %r - falling back", chat_id, e,
+                       exc_info=True)
+        return None
+    if len(_menus) > 500:
+        _menus.pop(next(iter(_menus)))
+    st["msg"] = sent
+    _menus[(chat_id, sent.id)] = st
+    return sent
+
+
+async def edit_menu(query, markup, caption_html=None) -> bool:
+    """Swap buttons (and optionally the text) of a rich menu from a callback.
+    False = this message isn't a rich menu, use the normal edit."""
+    key = (query.message.chat.id, query.message.id)
+    st = _menus.get(key)
+    if not st:
+        return False
+    if caption_html is not None:
+        st["caption"] = caption_html
+    try:
+        await _edit(query.message, _menu_blocks(st, markup))
+    except errors.MessageNotModified:
+        pass
+    except Exception as e:
+        logger.warning("[Rich] edit_menu failed: %r", e)
+        return False
+    return True
     
