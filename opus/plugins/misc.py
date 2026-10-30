@@ -84,14 +84,14 @@ async def update_timer(length=10, sleep=12):
                         timer = None
                     remove = False
 
-                if not timer and not remove:
+                # rich player: new progress bar + new random colors
+                if await rich.update(
+                    chat_id, message_id=message_id, played=played, duration=duration,
+                    remove=remove, min_gap=rich.TIMER_GAP,
+                ):
                     continue
 
-                # rich player: edits re-upload the thumbnail, so throttle to 30s
-                if await rich.update(
-                    chat_id, message_id=message_id, timer=timer,
-                    remove=remove, min_gap=30,
-                ):
+                if not timer and not remove:
                     continue
 
                 await app.edit_message_reply_markup(
