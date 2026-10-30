@@ -101,7 +101,9 @@ class TgCall(PyTgCalls):
                 )
                 # Rich Message player (Bot API 10.1+); falls back to the
                 # classic inline keyboard below if unavailable / failed.
-                sent_rich = await rich.send_player(chat_id, message, _thumb, text, _lang)
+                sent_rich = await rich.send_player(
+                    chat_id, message, _thumb, text, _lang, duration=media.duration_sec
+                )
                 if sent_rich:
                     media.message_id = sent_rich.id
                     return
@@ -267,4 +269,4 @@ class TgCall(PyTgCalls):
             self.clients.append(client)
             await self.decorators(client)
         logger.info("PyTgCalls client(s) started.")
-  
+
