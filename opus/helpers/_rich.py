@@ -277,7 +277,7 @@ def clear(chat_id):
 # --------------------------------------------------------------------------
 # Rich menus (/start + its sub-menus), converted from InlineKeyboardMarkup
 # --------------------------------------------------------------------------
-def _markup_blocks(markup) -> list:
+def _markup_blocks(markup, group: bool = False) -> list:
     rows = []
     for row in getattr(markup, "inline_keyboard", None) or []:
         btns = []
@@ -287,7 +287,13 @@ def _markup_blocks(markup) -> list:
                 btns.append(_btn(b.text, style, url=b.url))
             elif getattr(b, "callback_data", None):
                 data = b.callback_data
-                btns.append(_btn(b.text, style, data=data.decode() if isinstance(data, bytes) else data))
+                data = data.decode() if isinstance(data, bytes) else data
+                uname = getattr(app, "username", None)
+                if group and data == "help" and uname:
+                    # in groups open the help menu in the bot's private chat
+                    btns.append(_btn(b.text, style, url=f"https://t.me/{uname}?start=help"))
+                else:
+                    btns.append(_btn(b.text, style, data=data))
         if btns:
             rows.append(types.InputRichBlockButtons(buttons=btns))
     return rows
@@ -300,7 +306,7 @@ def _menu_blocks(st, markup) -> list:
     elif st.get("photo"):
         blocks.append(types.InputRichBlockPhoto(photo=types.InputMediaPhoto(st["photo"])))
     blocks += _paragraphs(st["caption"])
-    return blocks + _markup_blocks(markup)
+    return blocks + _markup_blocks(markup, st.get("group", False))
 
 
 async def send_menu(chat_id, photo, caption_html, markup, video=None):
@@ -308,7 +314,8 @@ async def send_menu(chat_id, photo, caption_html, markup, video=None):
     first, then the photo. None if both fail (caller uses the classic start)."""
     if not (RICH_OK and START_ENABLED):
         return None
-    st = {"photo": photo, "video": video, "caption": caption_html}
+    st = {"photo": photo, "video": video, "caption": caption_html,
+          "group": chat_id < 0}
     sent = None
     for use_video in ((True, False) if video else (False,)):
         if not use_video:
@@ -326,6 +333,23 @@ async def send_menu(chat_id, photo, caption_html, markup, video=None):
     st["msg"] = sent
     _menus[(chat_id, sent.id)] = st
     return sent
+
+
+async def finish_menu(chat_id, message_id, caption_html) -> bool:
+    """Replace a rich menu with plain text (no photo, no buttons).
+    False = not a rich menu, use the normal edit."""
+    st = _menus.get((chat_id, message_id))
+    if not st:
+        return False
+    st.update(caption=caption_html, photo=None, video=None)
+    try:
+        await _edit(st["msg"], _menu_blocks(st, None))
+    except errors.MessageNotModified:
+        pass
+    except Exception as e:
+        logger.warning("[Rich] finish_menu failed: %r", e)
+        return False
+    return True
 
 
 async def edit_menu(query, markup, caption_html=None) -> bool:
