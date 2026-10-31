@@ -3,9 +3,10 @@
 # This file is part of OpusMusic
 
 
+import logging
 import re
 
-from pyrogram import errors, filters, types
+from pyrogram import enums, errors, filters, types
 
 from opus import anon, app, db, lang, queue, tg, yt
 from opus.helpers import admin_check, buttons, can_manage_vc, rich
@@ -129,7 +130,7 @@ async def _controls(_, query: types.CallbackQuery):
 
     try:
         if action in ["skip", "replay", "stop"]:
-            await query.message.reply_text(reply, quote=False)
+            await query.message.reply_text(reply)
             await query.message.delete()
         else:
             # Rich Message player: re-render blocks with the new status note
@@ -161,7 +162,22 @@ async def _controls(_, query: types.CallbackQuery):
 async def _help(_, query: types.CallbackQuery):
     data = query.data.split()
     if len(data) == 1:
-        return await query.answer(url=f"https://t.me/{app.username}?start=help")
+        # "Help & Commands" button on /start (classic or rich message)
+        try:
+            if query.message and query.message.chat.type == enums.ChatType.PRIVATE:
+                await query.answer()
+                return await app.send_message(
+                    query.message.chat.id,
+                    query.lang["help_menu"],
+                    reply_markup=buttons.help_markup(query.lang),
+                )
+            return await query.answer(url=f"https://t.me/{app.username}?start=help")
+        except Exception as e:
+            logging.getLogger(__name__).warning("[Help] open failed: %r", e)
+            try:
+                return await query.answer(f"@{app.username}", show_alert=True)
+            except Exception:
+                return
 
     if data[1] == "back":
         return await query.edit_message_text(
