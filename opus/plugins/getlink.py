@@ -13,6 +13,13 @@ from pyrogram import filters, types
 
 from opus import app, db
 
+# Kurigram dropped disable_web_page_preview -> link_preview_options
+_NO_PREVIEW = (
+    {"link_preview_options": types.LinkPreviewOptions(is_disabled=True)}
+    if hasattr(types, "LinkPreviewOptions")
+    else {"disable_web_page_preview": True}
+)
+
 
 @app.on_message(
     filters.command(["getlink", "getlinks"])
@@ -65,6 +72,7 @@ async def getlink_cmd(_, m: types.Message):
         full_text += f"\n\n⚠️ <b>{len(failed)} ɢʀᴏᴜᴘꜱ ꜰᴇᴛᴄʜ ɴᴀʜɪɴ ʜᴜᴇ</b>"
 
     chunks = [full_text[i:i+4096] for i in range(0, len(full_text), 4096)]
-    await sent.edit_text(chunks[0], disable_web_page_preview=True)
+    await sent.edit_text(chunks[0], **_NO_PREVIEW)
     for chunk in chunks[1:]:
-        await m.reply_text(chunk, disable_web_page_preview=True)
+        await m.reply_text(chunk, **_NO_PREVIEW)
+        
