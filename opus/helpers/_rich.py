@@ -47,6 +47,8 @@ else:
 TIMER_GAP = int(os.getenv("RICH_TIMER_GAP", "12"))
 # set RICH_START=0 to keep the classic /start message
 START_ENABLED = os.getenv("RICH_START", "1") != "0"
+# set RICH_HELP=0 to keep the classic /help menu
+HELP_ENABLED = os.getenv("RICH_HELP", "1") != "0"
 
 _FORBIDDEN = (errors.ChatSendPhotosForbidden, errors.ChatSendMediaForbidden)
 _KEEP = object()  # "leave the stored value as it is"
@@ -63,7 +65,11 @@ _menus: dict[tuple, dict] = {}  # (chat_id, message_id) -> rich menu state
 # --------------------------------------------------------------------------
 # HTML caption -> rich text
 # --------------------------------------------------------------------------
+_OTHER_TAG_RE = re.compile(r"</?(?!b\b|a\b|code\b)[a-z][^>]*>", re.IGNORECASE)
+
+
 def _inline(segment: str):
+    segment = _OTHER_TAG_RE.sub("", segment)  # <i>, <u>, <pre>... -> dropped
     parts, stack, pos = [], [], 0
     for m in _TAG_RE.finditer(segment):
         if m.start() > pos:
@@ -310,10 +316,10 @@ def _menu_blocks(st, markup) -> list:
     return blocks + _markup_blocks(markup, st.get("group", False))
 
 
-async def send_menu(chat_id, photo, caption_html, markup, video=None):
+async def send_menu(chat_id, photo, caption_html, markup, video=None, flag=None):
     """Send a rich menu message (video/photo + text + buttons). Tries the video
     first, then the photo. None if both fail (caller uses the classic start)."""
-    if not (RICH_OK and START_ENABLED):
+    if not (RICH_OK and (START_ENABLED if flag is None else flag)):
         return None
     st = {"photo": photo, "video": video, "caption": caption_html,
           "group": chat_id < 0}
