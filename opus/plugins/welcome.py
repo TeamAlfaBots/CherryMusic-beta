@@ -96,7 +96,7 @@ async def welcome_new_member(_, m: types.Message):
             # Rich Message welcome; classic photo message is the fallback
             if await rich.send_menu(chat_id, WELCOME_IMG, text, buttons):
                 continue
-            await m.reply_photo(photo=WELCOME_IMG, caption=text, reply_markup=buttons, quote=False)
+            await m.reply_photo(photo=WELCOME_IMG, caption=text, reply_markup=buttons)
 
     except Exception:
         pass
