@@ -14,6 +14,9 @@ from opus.helpers import admin_check, buttons, rich
 async def _lang(_, m: types.Message):
     current = await db.get_lang(m.chat.id)
     keyboard = buttons.lang_markup(current)
+    # Rich Message language menu; classic message is the fallback
+    if await rich.send_menu(m.chat.id, None, m.lang["lang_choose"], keyboard):
+        return
     await m.reply_text(m.lang["lang_choose"], reply_markup=keyboard)
 
 
