@@ -3,9 +3,10 @@
 # ║      Advanced Telegram Music System         ║
 # ╚══════════════════════════════════════════════╝
 
-from pyrogram import filters, types
+from pyrogram import enums, filters, types
 
 from opus import app, config
+from opus.helpers import rich
 from opus.plugins.start import get_start_img
 #&&
 _pending: dict[str, dict] = {}
@@ -19,10 +20,12 @@ def _request_buttons(chat_id: int, user_id: int) -> types.InlineKeyboardMarkup:
     return types.InlineKeyboardMarkup([
         [
             types.InlineKeyboardButton(
-                text="✅ ᴀᴄᴄᴇᴘᴛ", callback_data=f"jreq accept {chat_id} {user_id}"
+                text="✅ ᴀᴄᴄᴇᴘᴛ", callback_data=f"jreq accept {chat_id} {user_id}",
+                style=enums.ButtonStyle.SUCCESS,
             ),
             types.InlineKeyboardButton(
-                text="❌ ʀᴇᴊᴇᴄᴛ", callback_data=f"jreq reject {chat_id} {user_id}"
+                text="❌ ʀᴇᴊᴇᴄᴛ", callback_data=f"jreq reject {chat_id} {user_id}",
+                style=enums.ButtonStyle.DANGER,
             ),
         ],
     ])
@@ -31,8 +34,10 @@ def _request_buttons(chat_id: int, user_id: int) -> types.InlineKeyboardMarkup:
 def _joinrequest_buttons() -> types.InlineKeyboardMarkup:
     return types.InlineKeyboardMarkup([
         [
-            types.InlineKeyboardButton(text="ꜱᴜᴘᴘᴏʀᴛ", url=config.SUPPORT_CHAT),
-            types.InlineKeyboardButton(text="ᴜᴘᴅᴀᴛᴇ", url=config.SUPPORT_CHANNEL),
+            types.InlineKeyboardButton(text="ꜱᴜᴘᴘᴏʀᴛ", url=config.SUPPORT_CHAT,
+                                       style=enums.ButtonStyle.PRIMARY),
+            types.InlineKeyboardButton(text="ᴜᴘᴅᴀᴛᴇ", url=config.SUPPORT_CHANNEL,
+                                       style=enums.ButtonStyle.SUCCESS),
         ],
     ])
 
@@ -70,11 +75,12 @@ async def joinrequest_notify_owner(_, request: types.ChatJoinRequest):
 
         for owner_id in config.OWNER_ID:
             try:
-                sent = await app.send_message(
-                    chat_id=owner_id,
-                    text=text,
-                    reply_markup=_request_buttons(chat.id, user.id),
-                )
+                markup = _request_buttons(chat.id, user.id)
+                sent = await rich.send_menu(owner_id, None, text, markup)
+                if sent is None:
+                    sent = await app.send_message(
+                        chat_id=owner_id, text=text, reply_markup=markup
+                    )
                 _pending[key]["messages"][owner_id] = sent.id
             except Exception:
                 # Owner ne bot ko start nahi kiya ya DM band hai - skip.
@@ -102,7 +108,9 @@ async def joinrequest_decision(_, query: types.CallbackQuery):
 
     if not entry or entry["handled"]:
         try:
-            await query.edit_message_text("⚠️ ʏᴇ ʀᴇǫᴜᴇsᴛ ᴘᴀʜᴀʟᴇ ʜɪ ᴋɪꜱɪ ᴀᴜʀ ᴏᴡɴᴇʀ ɴᴇ ʜᴀɴᴅʟᴇ ᴋᴀʀ ᴅɪ ʜᴀɪ.")
+            _t = "⚠️ ʏᴇ ʀᴇǫᴜᴇsᴛ ᴘᴀʜᴀʟᴇ ʜɪ ᴋɪꜱɪ ᴀᴜʀ ᴏᴡɴᴇʀ ɴᴇ ʜᴀɴᴅʟᴇ ᴋᴀʀ ᴅɪ ʜᴀɪ."
+            if not await rich.finish_menu(query.message.chat.id, query.message.id, _t):
+                await query.edit_message_text(_t)
         except Exception:
             pass
         return await query.answer()
@@ -116,10 +124,9 @@ async def joinrequest_decision(_, query: types.CallbackQuery):
         except Exception:
             for owner_id, msg_id in entry["messages"].items():
                 try:
-                    await app.edit_message_text(
-                        owner_id, msg_id,
-                        "❌ ʀᴇǫᴜᴇsᴛ ᴀᴄᴄᴇᴘᴛ ɴᴀʜɪ ʜᴏ ᴘᴀᴀʏɪ (ʙᴏᴛ ᴋᴇ ᴘᴀᴀꜱ ᴘᴇʀᴍɪꜱꜱɪᴏɴ ɴᴀʜɪ ʜᴀɪ)."
-                    )
+                    _t = "❌ ʀᴇǫᴜᴇsᴛ ᴀᴄᴄᴇᴘᴛ ɴᴀʜɪ ʜᴏ ᴘᴀᴀʏɪ (ʙᴏᴛ ᴋᴇ ᴘᴀᴀꜱ ᴘᴇʀᴍɪꜱꜱɪᴏɴ ɴᴀʜɪ ʜᴀɪ)."
+                    if not await rich.finish_menu(owner_id, msg_id, _t):
+                        await app.edit_message_text(owner_id, msg_id, _t)
                 except Exception:
                     pass
             _pending.pop(key, None)
@@ -134,7 +141,9 @@ async def joinrequest_decision(_, query: types.CallbackQuery):
                 f"📋 ᴊᴜsᴛ sᴇɴᴅ /start ᴛᴏ sᴇᴇ ʙᴏᴛ ᴍᴇɴᴜ ᴀɴᴅ ᴄᴏᴍᴍᴀɴᴅs 📋"
             )
             start_img = get_start_img()
-            if start_img:
+            if await rich.send_menu(user_id, start_img, welcome_text, _joinrequest_buttons()):
+                pass
+            elif start_img:
                 await app.send_photo(
                     chat_id=user_id,
                     photo=start_img,
@@ -160,10 +169,11 @@ async def joinrequest_decision(_, query: types.CallbackQuery):
 
     for owner_id, msg_id in entry["messages"].items():
         try:
-            await app.edit_message_text(owner_id, msg_id, result_text)
+            if not await rich.finish_menu(owner_id, msg_id, result_text):
+                await app.edit_message_text(owner_id, msg_id, result_text)
         except Exception:
             pass
 
     _pending.pop(key, None)
     await query.answer()
-    
+
