@@ -125,10 +125,11 @@ async def _loading_animation(message: types.Message) -> None:
 @app.on_message(filters.command(["help"]) & filters.private & ~app.bl_users)
 @lang.language()
 async def _help(_, m: types.Message):
-    await m.reply_text(
-        text=m.lang["help_menu"],
-        reply_markup=buttons.help_markup(m.lang),
-    )
+    text, markup = m.lang["help_menu"], buttons.help_markup(m.lang)
+    # Rich Message help menu; classic message is the fallback
+    if await rich.send_menu(m.chat.id, None, text, markup, flag=rich.HELP_ENABLED):
+        return
+    await m.reply_text(text=text, reply_markup=markup)
 
 
 @app.on_message(filters.command(["start"]))
