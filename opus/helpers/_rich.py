@@ -289,8 +289,9 @@ def _markup_blocks(markup, group: bool = False) -> list:
                 data = b.callback_data
                 data = data.decode() if isinstance(data, bytes) else data
                 uname = getattr(app, "username", None)
-                if group and data == "help" and uname:
-                    # in groups open the help menu in the bot's private chat
+                if data == "help" and uname:
+                    # Help opens via deep link (works in private chat and
+                    # groups, no callback needed)
                     btns.append(_btn(b.text, style, url=f"https://t.me/{uname}?start=help"))
                 else:
                     btns.append(_btn(b.text, style, data=data))
