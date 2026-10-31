@@ -166,10 +166,13 @@ async def _help(_, query: types.CallbackQuery):
         try:
             if query.message and query.message.chat.type == enums.ChatType.PRIVATE:
                 await query.answer()
+                _text, _mk = query.lang["help_menu"], buttons.help_markup(query.lang)
+                if await rich.send_menu(
+                    query.message.chat.id, None, _text, _mk, flag=rich.HELP_ENABLED
+                ):
+                    return
                 return await app.send_message(
-                    query.message.chat.id,
-                    query.lang["help_menu"],
-                    reply_markup=buttons.help_markup(query.lang),
+                    query.message.chat.id, _text, reply_markup=_mk
                 )
             return await query.answer(url=f"https://t.me/{app.username}?start=help")
         except Exception as e:
@@ -180,6 +183,10 @@ async def _help(_, query: types.CallbackQuery):
                 return
 
     if data[1] == "back":
+        if await rich.edit_menu(
+            query, buttons.help_markup(query.lang), query.lang["help_menu"]
+        ):
+            return
         return await query.edit_message_text(
             text=query.lang["help_menu"], reply_markup=buttons.help_markup(query.lang)
         )
@@ -190,6 +197,10 @@ async def _help(_, query: types.CallbackQuery):
         except Exception:
             return
 
+    if await rich.edit_menu(
+        query, buttons.help_markup(query.lang, True), query.lang[f"help_{data[1]}"]
+    ):
+        return
     await query.edit_message_text(
         text=query.lang[f"help_{data[1]}"],
         reply_markup=buttons.help_markup(query.lang, True),
