@@ -128,7 +128,6 @@ async def _help(_, m: types.Message):
     await m.reply_text(
         text=m.lang["help_menu"],
         reply_markup=buttons.help_markup(m.lang),
-        quote=True,
     )
 
 
@@ -196,7 +195,6 @@ async def start(_, message: types.Message):
                 video=start_video,
                 caption=_text,
                 reply_markup=key,
-                quote=not private,
             )
             print("[DEBUG] reply_video succeeded")
         except Exception as e:
@@ -209,13 +207,11 @@ async def start(_, message: types.Message):
                 photo=get_start_img(),
                 caption=_text,
                 reply_markup=key,
-                quote=not private,
             )
         except Exception:
             sent = await message.reply_text(
                 text=_text,
                 reply_markup=key,
-                quote=not private,
                 parse_mode=enums.ParseMode.HTML,
             )
 
@@ -243,7 +239,6 @@ async def settings(_, message: types.Message):
         reply_markup=buttons.settings_markup(
             message.lang, admin_only, cmd_delete, _language, message.chat.id
         ),
-        quote=True,
     )
 
 
