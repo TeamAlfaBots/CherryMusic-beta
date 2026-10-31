@@ -12,7 +12,7 @@
 from pyrogram import enums, filters, types
 
 from opus import app, config, db, lang
-from opus.helpers import can_manage_vc
+from opus.helpers import can_manage_vc, rich
 
 
 # ── MongoDB helpers ──────────────────────────────────────────────────────────
@@ -51,6 +51,7 @@ def _welcome_buttons(chat_id: int, is_on: bool) -> types.InlineKeyboardMarkup:
             types.InlineKeyboardButton(
                 text="⛩️ OpusMusic",
                 url=config.SUPPORT_CHAT,
+                style=enums.ButtonStyle.PRIMARY,
             ),
         ],
     ])
@@ -92,10 +93,19 @@ async def welcome_new_member(_, m: types.Message):
             buttons = _welcome_buttons(chat_id, True)
 
             WELCOME_IMG = "https://files.catbox.moe/kdeoz4.jpg"
+            # Rich Message welcome; classic photo message is the fallback
+            if await rich.send_menu(chat_id, WELCOME_IMG, text, buttons):
+                continue
             await m.reply_photo(photo=WELCOME_IMG, caption=text, reply_markup=buttons, quote=False)
 
     except Exception:
         pass
+
+
+async def _send_status(m: types.Message, text: str, markup):
+    if await rich.send_menu(m.chat.id, None, text, markup):
+        return
+    return await m.reply_text(text, reply_markup=markup)
 
 
 # ── /welcome command ──────────────────────────────────────────────────────────
@@ -113,18 +123,17 @@ async def welcome_cmd(_, m: types.Message):
     if len(m.command) < 2:
         state = await is_welcome(chat_id)
         status = "✅ ᴏɴ" if state else "❌ ᴏꜰꜰ"
-        return await m.reply_text(
-            f"<b>ᴡᴇʟᴄᴏᴍᴇ ꜱᴛᴀᴛᴜꜱ:</b> {status}",
-            reply_markup=_welcome_buttons(chat_id, state),
+        return await _send_status(
+            m, f"<b>ᴡᴇʟᴄᴏᴍᴇ ꜱᴛᴀᴛᴜꜱ:</b> {status}", _welcome_buttons(chat_id, state)
         )
 
     sub = m.command[1].lower()
     if sub in ("on", "enable", "1"):
         await set_welcome(chat_id, True)
-        return await m.reply_text("✅ ᴡᴇʟᴄᴏᴍᴇ <b>ᴇɴᴀʙʟᴇᴅ</b>.", reply_markup=_welcome_buttons(chat_id, True))
+        return await _send_status(m, "✅ ᴡᴇʟᴄᴏᴍᴇ <b>ᴇɴᴀʙʟᴇᴅ</b>.", _welcome_buttons(chat_id, True))
     if sub in ("off", "disable", "0"):
         await set_welcome(chat_id, False)
-        return await m.reply_text("❌ ᴡᴇʟᴄᴏᴍᴇ <b>ᴅɪꜱᴀʙʟᴇᴅ</b>.", reply_markup=_welcome_buttons(chat_id, False))
+        return await _send_status(m, "❌ ᴡᴇʟᴄᴏᴍᴇ <b>ᴅɪꜱᴀʙʟᴇᴅ</b>.", _welcome_buttons(chat_id, False))
 
     return await m.reply_text("<b>ᴜꜱᴀɢᴇ:</b> <code>/welcome on</code> | <code>/welcome off</code>")
 
@@ -146,6 +155,9 @@ async def welcome_toggle_callback(_, query: types.CallbackQuery):
         await set_welcome(chat_id, new_state)
         status_text = "✅ ᴇɴᴀʙʟᴇᴅ" if new_state else "❌ ᴅɪꜱᴀʙʟᴇᴅ"
         await query.answer(f"ᴡᴇʟᴄᴏᴍᴇ {status_text}", show_alert=True)
-        await query.edit_message_reply_markup(reply_markup=_welcome_buttons(chat_id, new_state))
+        markup = _welcome_buttons(chat_id, new_state)
+        if not await rich.edit_menu(query, markup):
+            await query.edit_message_reply_markup(reply_markup=markup)
     except Exception:
         await query.answer("ᴇʀʀᴏʀ!", show_alert=True)
+        
