@@ -98,13 +98,76 @@ def _inline(segment: str):
     return parts[0] if len(parts) == 1 else parts
 
 
-def _paragraphs(html_text: str) -> list:
+_BQ_BLOCK_RE = re.compile(r"<blockquote\b([^>]*)>(.*?)</blockquote>", re.IGNORECASE | re.DOTALL)
+_QUOTE_ERRORS = (errors.BadRequest, TypeError, ValueError, AttributeError)
+_QUOTE = {"ok": os.getenv("RICH_QUOTE", "1") != "0"}  # RICH_QUOTE=0 -> no quote boxes
+
+
+def _lines(html_text: str) -> list:
+    return [ln.strip() for ln in (html_text or "").split("\n") if ln.strip()]
+
+
+def _plain_blocks(html_text: str) -> list:
     html_text = _BQ_RE.sub("", html_text or "")
-    return [
-        types.InputRichBlockParagraph(text=_inline(line))
-        for line in (ln.strip() for ln in html_text.split("\n"))
-        if line
-    ]
+    return [types.InputRichBlockParagraph(text=_inline(ln)) for ln in _lines(html_text)]
+
+
+def _quote_blocks(inner: str, expandable: bool) -> list:
+    """<blockquote> -> quote block, <blockquote expandable> -> collapsible block."""
+    lines = _lines(inner)
+    if not lines:
+        return []
+    try:
+        if expandable and hasattr(types, "InputRichBlockExpandableBlockQuotation"):
+            parts = []
+            for i, ln in enumerate(lines):
+                if i:
+                    parts.append("\n")
+                x = _inline(ln)
+                parts += x if isinstance(x, list) else [x]
+            return [types.InputRichBlockExpandableBlockQuotation(text=parts)]
+        return [
+            types.InputRichBlockBlockQuotation(
+                blocks=[types.InputRichBlockParagraph(text=_inline(ln)) for ln in lines]
+            )
+        ]
+    except Exception as e:  # field names differ in this fork -> plain text
+        _QUOTE["ok"] = False
+        logger.warning("[Rich] quote blocks unsupported (%r) - using plain text", e)
+        return _plain_blocks(inner)
+
+
+def _paragraphs(html_text: str) -> list:
+    html_text = html_text or ""
+    if not (_QUOTE["ok"] and hasattr(types, "InputRichBlockBlockQuotation")):
+        return _plain_blocks(html_text)
+    blocks, pos = [], 0
+    for m in _BQ_BLOCK_RE.finditer(html_text):
+        blocks += _plain_blocks(html_text[pos:m.start()])
+        blocks += _quote_blocks(m.group(2), "expandable" in m.group(1).lower())
+        pos = m.end()
+    return blocks + _plain_blocks(html_text[pos:])
+
+
+def _has_quote(blocks) -> bool:
+    kinds = tuple(
+        c for c in (getattr(types, "InputRichBlockBlockQuotation", None),
+                    getattr(types, "InputRichBlockExpandableBlockQuotation", None)) if c
+    )
+    return bool(kinds) and any(isinstance(b, kinds) for b in blocks)
+
+
+def _unquote(blocks) -> list:
+    bq = getattr(types, "InputRichBlockBlockQuotation", None)
+    out = []
+    for b in blocks:
+        if bq is not None and isinstance(b, bq):
+            out += list(b.blocks)
+        elif _has_quote([b]):
+            out.append(types.InputRichBlockParagraph(text=b.text))
+        else:
+            out.append(b)
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -189,6 +252,29 @@ async def _blocks(chat_id, st, *, status=None, remove=False):
     return blocks
 
 
+async def _with_quote_retry(call, *args):
+    """Run an edit/send; if Telegram or the library rejects quote blocks,
+    retry once as plain paragraphs and stop using quote blocks."""
+    blocks = args[-1]
+    try:
+        return await call(*args)
+    except _QUOTE_ERRORS as e:
+        if isinstance(e, errors.MessageNotModified) or not _has_quote(blocks):
+            raise
+        res = await call(*args[:-1], _unquote(blocks))  # still failing -> not the quotes
+        _QUOTE["ok"] = False
+        logger.warning("[Rich] quote blocks rejected (%r) - switched to plain text", e)
+        return res
+
+
+async def _edit(message, blocks):
+    return await _with_quote_retry(_edit_core, message, blocks)
+
+
+async def _send(chat_id, blocks):
+    return await _with_quote_retry(_send_core, chat_id, blocks)
+
+
 def _strip_photo(blocks):
     return [b for b in blocks if not isinstance(b, types.InputRichBlockPhoto)]
 
@@ -196,7 +282,7 @@ def _strip_photo(blocks):
 # --------------------------------------------------------------------------
 # Send / edit
 # --------------------------------------------------------------------------
-async def _edit(message, blocks):
+async def _edit_core(message, blocks):
     try:
         return await message.edit_text(rich_message=types.InputRichMessage(blocks=blocks))
     except _FORBIDDEN:
@@ -206,7 +292,7 @@ async def _edit(message, blocks):
         return await message.edit_text(rich_message=types.InputRichMessage(blocks=plain))
 
 
-async def _send(chat_id, blocks):
+async def _send_core(chat_id, blocks):
     try:
         return await app.send_rich_message(
             chat_id, rich_message=types.InputRichMessage(blocks=blocks)
