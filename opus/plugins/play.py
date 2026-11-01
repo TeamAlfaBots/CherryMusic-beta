@@ -8,7 +8,7 @@ from pathlib import Path
 from pyrogram import filters, types
 
 from opus import anon, app, config, db, lang, queue, tg, yt
-from opus.helpers import buttons, utils
+from opus.helpers import buttons, rich, utils
 from opus.helpers._play import checkUB
 
 
@@ -101,18 +101,22 @@ async def play_hndlr(
         position = queue.add(m.chat.id, file)
 
         if position != 0 or await db.get_call(m.chat.id):
-            await sent.edit_text(
-                m.lang["play_queued"].format(
-                    position,
-                    file.url,
-                    file.title,
-                    file.duration,
-                    m.from_user.mention,
-                ),
-                reply_markup=buttons.play_queued(
-                    m.chat.id, file.id, m.lang["play_now"]
-                ),
-            )
+            # Rich Message "Added to Queue"; classic message is the fallback
+            if not await rich.send_queued(
+                sent, m.chat.id, position, file, m.from_user.mention, m.lang
+            ):
+                await sent.edit_text(
+                    m.lang["play_queued"].format(
+                        position,
+                        file.url,
+                        file.title,
+                        file.duration,
+                        m.from_user.mention,
+                    ),
+                    reply_markup=buttons.play_queued(
+                        m.chat.id, file.id, m.lang["play_now"]
+                    ),
+                )
             if tracks:
                 added = playlist_to_queue(m.chat.id, tracks)
                 await app.send_message(
@@ -137,4 +141,4 @@ async def play_hndlr(
         chat_id=m.chat.id,
         text=m.lang["playlist_queued"].format(len(tracks)) + added,
     )
-  
+
