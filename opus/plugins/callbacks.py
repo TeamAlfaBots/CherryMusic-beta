@@ -115,8 +115,10 @@ async def _controls(_, query: types.CallbackQuery):
             pass
         return
 
-    elif action == "delete":
-        rich.clear(chat_id)
+    elif action in ("delete", "close"):
+        _st = rich._np.get(chat_id)
+        if action == "delete" and _st and _st["msg"].id == query.message.id:
+            rich.clear(chat_id)
         try:
             await query.message.delete()
         except Exception:
