@@ -230,7 +230,7 @@ async def _blocks(chat_id, st, *, status=None, remove=False):
         return blocks
 
     ap_on = await is_autoplay(chat_id)
-    ap_text = "ᴀᴜᴛᴏᴘʟᴀʏ: ᴏɴ" if ap_on else "ᴀᴜᴛᴏᴘʟᴀʏ: ᴏꜰꜰ"
+    ap_text = "ᴀᴜᴛᴏᴘʟᴀʏ: ᴏɴ ✅" if ap_on else "ᴀᴜᴛᴏᴘʟᴀʏ: ᴏꜰꜰ ❌"
     row2 = (("▷", "resume"), ("II", "pause"), ("⥁", "replay"), ("‣‣I", "skip"), ("▢", "stop"))
     blocks += [
         # row 2: player controls
@@ -246,7 +246,7 @@ async def _blocks(chat_id, st, *, status=None, remove=False):
         ),
         # row 4: delete this player message
         types.InputRichBlockButtons(
-            buttons=[_btn("ᴅᴇʟᴇᴛᴇ", c[7], f"controls delete {chat_id}")]
+            buttons=[_btn("ᴅᴇʟᴇᴛᴇ 🗑", c[7], f"controls delete {chat_id}")]
         ),
     ]
     return blocks
