@@ -77,7 +77,7 @@ def _bot_link() -> str:
 def _premium_caption(base_text: str, first_name: str) -> str:
     greeting = _time_greeting()
     tip = random.choice(_TIPS)
-    version = getattr(config, "VERSION", "2.0")
+    version = getattr(config, "VERSION", "3.1")
     return (
         f"✦ {greeting}, <b>{first_name}</b> 👋\n\n"
         f"{base_text}\n\n"
