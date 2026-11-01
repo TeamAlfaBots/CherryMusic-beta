@@ -1,0 +1,272 @@
+# Copyright (c) 2025 OpusMusic
+# Licensed under the MIT License.
+# This file is part of OpusMusic
+
+import asyncio
+import html
+import random
+from datetime import datetime
+
+from pyrogram import enums, filters, types
+from pyrogram.errors import PeerIdInvalid, ChatWriteForbidden
+
+from opus import app, config, db, lang
+from opus.helpers import buttons, rich, utils
+
+# ── Optional config ───────────────────────────────────────────────────────────
+STICKER_ID: str | None = getattr(config, "STICKER_ID", None)
+
+_REACTIONS = ["🎵", "✨", "💎", "🎶", "👑", "🌟", "🎼", "💫", "🎧"]
+
+_LOADING_FRAMES = [
+    "░░░░░░░░░░  <b>ᴄσηηєᴄᴛɪηɢ...</b>",
+    "███░░░░░░░  <b>ʟσᴧᴅɪηɢ ϻσᴅᴜʟєꜱ...</b>",
+    "██████░░░░  <b>ꜱʏηᴄɪηɢ ᴅᴧᴛᴧʙᴧꜱєꜱ...</b>",
+    "█████████░  <b>ᴧʟϻσꜱᴛ ʀєᴧᴅʏ...</b>",
+    "██████████  <b>✦ ᴡєʟᴄσϻє ᴛσ σᴘᴜꜱϻᴜꜱɪᴄ ✦</b>",
+]
+
+_TIPS = [
+    "✦ ꜱᴛʀєᴧϻ ϻᴜꜱɪᴄ ᴡɪᴛʜ <code>/play &lt;song&gt;</code>",
+    "✦ ᴘʟᴧʏ ᴠɪᴅєσꜱ ᴡɪᴛʜ <code>/vplay &lt;song&gt;</code>",
+    "✦ ᴠɪєᴡ ᴄᴜʀʀєηᴛ qᴜєᴜє ᴡɪᴛʜ <code>/queue</code>",
+    "✦ ꜱᴋɪᴘ ᴛʀᴧᴄᴋꜱ ɪηꜱᴛᴧηᴛʟʏ ᴡɪᴛʜ <code>/skip</code>",
+    "✦ ꜰɪηє-ᴛᴜηє ʏσᴜʀ єxᴘєʀɪєηᴄє ᴠɪᴧ <code>/settings</code>",
+]
+
+_DIVIDER = "┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄"
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def get_start_img() -> str:
+    if isinstance(config.START_IMG, list) and config.START_IMG:
+        return random.choice(config.START_IMG)
+    return config.START_IMG
+
+
+def get_start_video() -> str | None:
+    """Return a random video URL from START_VIDEO list, or None if unset."""
+    if isinstance(config.START_VIDEO, list) and config.START_VIDEO:
+        return random.choice(config.START_VIDEO)
+    return config.START_VIDEO or None
+
+
+def _time_greeting() -> str:
+    hour = datetime.now().hour
+    if 5 <= hour < 12:
+        return "🌅 ɢσσᴅ ϻσʀηɪηɢ"
+    if 12 <= hour < 17:
+        return "🌞 ɢσσᴅ ᴧꜰᴛєʀησση"
+    if 17 <= hour < 21:
+        return "🌆 ɢσσᴅ єᴠєηɪηɢ"
+    return "🌙 ɢσσᴅ ηɪɢʜᴛ"
+
+
+def _user_link(user: types.User) -> str:
+    """Clickable user name (opens the profile)."""
+    return f'<a href="tg://user?id={user.id}">{html.escape(user.first_name or "User")}</a>'
+
+
+def _bot_link() -> str:
+    """Clickable bot name (opens the bot)."""
+    name = html.escape(app.name)
+    return f'<a href="https://t.me/{app.username}">{name}</a>' if app.username else name
+
+
+def _premium_caption(base_text: str, first_name: str) -> str:
+    greeting = _time_greeting()
+    tip = random.choice(_TIPS)
+    version = getattr(config, "VERSION", "2.0")
+    return (
+        f"✦ {greeting}, <b>{first_name}</b> 👋\n\n"
+        f"{base_text}\n\n"
+        f"{_DIVIDER}\n"
+        f"<b>◈ {_bot_link()}</b>  <code>v{version}</code>\n"
+        f"{tip}\n"
+        f"{_DIVIDER}"
+    )
+
+
+def _group_caption(base_text: str) -> str:
+    version = getattr(config, "VERSION", "2.0")
+    return (
+        f"{base_text}\n\n"
+        f"{_DIVIDER}\n"
+        f"<b>◈ {_bot_link()}</b>  <code>v{version}</code>\n"
+        f"✦ ʜɪɢʜ-qᴜᴧʟɪᴛʏ • ʟσᴡ-ʟᴧᴛєηᴄʏ • ᴧʟᴡᴧʏꜱ ση\n"
+        f"{_DIVIDER}"
+    )
+
+
+async def _react(message: types.Message, emoji: str) -> None:
+    try:
+        await message.react(emoji, big=True)
+    except Exception:
+        pass
+
+
+async def _send_sticker(message: types.Message) -> None:
+    if not STICKER_ID:
+        return
+    try:
+        sticker_msg = await message.reply_sticker(STICKER_ID)
+        await asyncio.sleep(2)
+        await sticker_msg.delete()
+    except Exception:
+        pass
+
+
+async def _loading_animation(message: types.Message) -> None:
+    try:
+        loading = await message.reply_text(
+            _LOADING_FRAMES[0],
+            parse_mode=enums.ParseMode.HTML,
+        )
+        for frame in _LOADING_FRAMES[1:]:
+            await asyncio.sleep(0.35)
+            await loading.edit_text(frame, parse_mode=enums.ParseMode.HTML)
+        await asyncio.sleep(0.4)
+        await loading.delete()
+    except Exception:
+        pass
+
+
+# ── Handlers ──────────────────────────────────────────────────────────────────
+
+@app.on_message(filters.command(["help"]) & filters.private & ~app.bl_users)
+@lang.language()
+async def _help(_, m: types.Message):
+    text, markup = m.lang["help_menu"], buttons.help_markup(m.lang)
+    # Rich Message help menu; classic message is the fallback
+    if await rich.send_menu(m.chat.id, None, text, markup, flag=rich.HELP_ENABLED):
+        return
+    await m.reply_text(text=text, reply_markup=markup)
+
+
+@app.on_message(filters.command(["start"]))
+@lang.language()
+async def start(_, message: types.Message):
+    # Blocked user guard
+    if message.from_user.id in app.bl_users and message.from_user.id not in db.notified:
+        return await message.reply_text(message.lang["bl_user_notify"])
+
+    # /start help deep-link
+    if len(message.command) > 1 and message.command[1] == "help":
+        return await _help(_, message)
+
+    private = message.chat.type == enums.ChatType.PRIVATE
+
+    # 1. Typing action
+    try:
+        await app.send_chat_action(message.chat.id, enums.ChatAction.TYPING)
+        await asyncio.sleep(0.3)
+    except Exception:
+        pass
+
+    # 2. React to /start message (await — nahi skip hoga)
+    await _react(message, random.choice(_REACTIONS))
+
+    # 3. Loading animation (private only)
+    if private:
+        await _loading_animation(message)
+
+    # 4. Sticker (private only)
+    if private:
+        asyncio.create_task(_send_sticker(message))
+
+    # 5. Build caption
+    base_text = (
+        message.lang["start_pm"].format(_user_link(message.from_user), _bot_link())
+        if private
+        else message.lang["start_gp"].format(_bot_link())
+    )
+
+    _text = (
+        _premium_caption(base_text, _user_link(message.from_user))
+        if private
+        else _group_caption(base_text)
+    )
+
+    # 6. Buttons
+    key = buttons.start_key(message.lang, private)
+
+    # 7. Rich Message start (photo + text + colored buttons); classic chain
+    #    below is the fallback if rich is unavailable or fails.
+    sent = None
+    if rich.RICH_OK and rich.START_ENABLED:
+        sent = await rich.send_menu(
+            message.chat.id, get_start_img(), _text, key,
+            video=get_start_video(), merge=True,
+        )
+
+    # 7b. Video → photo → text fallback chain
+    start_video = get_start_video() if sent is None else None
+    print(f"[DEBUG] get_start_video() returned: {start_video!r}")
+    if sent is None and start_video:
+        try:
+            sent = await message.reply_video(
+                video=start_video,
+                caption=_text,
+                reply_markup=key,
+            )
+            print("[DEBUG] reply_video succeeded")
+        except Exception as e:
+            print(f"[DEBUG] reply_video FAILED: {type(e).__name__}: {e}")
+            sent = None
+
+    if sent is None:
+        try:
+            sent = await message.reply_photo(
+                photo=get_start_img(),
+                caption=_text,
+                reply_markup=key,
+            )
+        except Exception:
+            sent = await message.reply_text(
+                text=_text,
+                reply_markup=key,
+                parse_mode=enums.ParseMode.HTML,
+            )
+
+    # 8. Save user / chat
+    if private:
+        if await db.is_user(message.from_user.id):
+            return
+        await utils.send_log(message)
+        await db.add_user(message.from_user.id)
+    else:
+        if await db.is_chat(message.chat.id):
+            return
+        await utils.send_log(message, True)
+        await db.add_chat(message.chat.id)
+
+
+@app.on_message(filters.command(["playmode", "settings"]) & filters.group & ~app.bl_users)
+@lang.language()
+async def settings(_, message: types.Message):
+    admin_only = await db.get_play_mode(message.chat.id)
+    cmd_delete = await db.get_cmd_delete(message.chat.id)
+    _language = await db.get_lang(message.chat.id)
+    await message.reply_text(
+        text=message.lang["start_settings"].format(message.chat.title),
+        reply_markup=buttons.settings_markup(
+            message.lang, admin_only, cmd_delete, _language, message.chat.id
+        ),
+    )
+
+
+@app.on_message(filters.new_chat_members, group=7)
+@lang.language()
+async def _new_member(_, message: types.Message):
+    if message.chat.type != enums.ChatType.SUPERGROUP:
+        return await message.chat.leave()
+
+    await asyncio.sleep(3)
+    for member in message.new_chat_members:
+        if member.id == app.id:
+            if await db.is_chat(message.chat.id):
+                return
+            await utils.send_log(message, True)
+            await db.add_chat(message.chat.id)
+            
