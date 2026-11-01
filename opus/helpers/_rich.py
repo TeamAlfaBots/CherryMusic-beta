@@ -230,7 +230,7 @@ async def _blocks(chat_id, st, *, status=None, remove=False):
         return blocks
 
     ap_on = await is_autoplay(chat_id)
-    ap_text = "ᴀᴜᴛᴏᴘʟᴀʏ: ᴏɴ ✅" if ap_on else "ᴀᴜᴛᴏᴘʟᴀʏ: ᴏꜰꜰ ❌"
+    ap_text = "ᴀᴜᴛᴏᴘʟᴀʏ: ᴏɴ" if ap_on else "ᴀᴜᴛᴏᴘʟᴀʏ: ᴏꜰꜰ"
     row2 = (("▷", "resume"), ("II", "pause"), ("⥁", "replay"), ("‣‣I", "skip"), ("▢", "stop"))
     blocks += [
         # row 2: player controls
@@ -246,7 +246,7 @@ async def _blocks(chat_id, st, *, status=None, remove=False):
         ),
         # row 4: delete this player message
         types.InputRichBlockButtons(
-            buttons=[_btn("ᴅᴇʟᴇᴛᴇ 🗑", c[7], f"controls delete {chat_id}")]
+            buttons=[_btn("ᴅᴇʟᴇᴛᴇ", c[7], f"controls delete {chat_id}")]
         ),
     ]
     return blocks
@@ -442,7 +442,32 @@ def _as_list(x):
     return x if isinstance(x, list) else [x]
 
 
-async def send_queued(message, chat_id, position, file, user_html, lang):
+def _short(text, n=42) -> str:
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= n else text[: n - 1] + "…"
+
+
+def _queue_list_blocks(items) -> list:
+    """"In queue: N" line + collapsible "Up next" list.
+    items = full queue; index 0 is the track that is playing right now."""
+    waiting = list(items or [])[1:]
+    if not waiting:
+        return []
+    shown = waiting[:15]
+    lines = ["<b>Up next</b>"] + [
+        f"{i}. {_html.escape(_short(it.title))} · {_html.escape(str(it.duration))}"
+        for i, it in enumerate(shown, start=1)
+    ]
+    if len(waiting) > len(shown):
+        lines.append(f"+{len(waiting) - len(shown)} more")
+    head = types.InputRichBlockParagraph(
+        text=["• In queue: ", types.RichTextBold(text=f"{len(waiting)} track"
+                                                  + ("s" if len(waiting) != 1 else ""))]
+    )
+    return [head] + _paragraphs("<blockquote expandable>" + "\n".join(lines) + "</blockquote>")
+
+
+async def send_queued(message, chat_id, position, file, user_html, lang, items=None):
     """Rich "Added to Queue" message: big heading, bullet lines and the
     Play Now / Close buttons. Edits `message` (the placeholder); returns the
     Message, or None so the caller sends the classic version."""
@@ -461,6 +486,7 @@ async def send_queued(message, chat_id, position, file, user_html, lang):
             types.InputRichBlockParagraph(
                 text=["• Requested by: "] + _as_list(_inline(user_html))
             ),
+            *_queue_list_blocks(items),
             types.InputRichBlockButtons(
                 buttons=[
                     _btn(lang.get("play_now", "Play Now"), S.SUCCESS,
@@ -511,13 +537,4 @@ async def edit_menu(query, markup, caption_html=None) -> bool:
     if not st:
         return False
     if caption_html is not None:
-        st["caption"] = caption_html
-    try:
-        await _edit(query.message, _menu_blocks(st, markup))
-    except errors.MessageNotModified:
-        pass
-    except Exception as e:
-        logger.warning("[Rich] edit_menu failed: %r", e)
-        return False
-    return True
-    
+        
