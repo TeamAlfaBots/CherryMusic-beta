@@ -49,6 +49,8 @@ TIMER_GAP = int(os.getenv("RICH_TIMER_GAP", "12"))
 START_ENABLED = os.getenv("RICH_START", "1") != "0"
 # set RICH_HELP=0 to keep the classic /help menu
 HELP_ENABLED = os.getenv("RICH_HELP", "1") != "0"
+# set RICH_QUEUE=0 to keep the classic "Added to queue" message
+QUEUE_ENABLED = os.getenv("RICH_QUEUE", "1") != "0"
 
 _FORBIDDEN = (errors.ChatSendPhotosForbidden, errors.ChatSendMediaForbidden)
 _KEEP = object()  # "leave the stored value as it is"
@@ -340,6 +342,62 @@ async def send_menu(chat_id, photo, caption_html, markup, video=None, flag=None)
     st["msg"] = sent
     _menus[(chat_id, sent.id)] = st
     return sent
+
+
+def _heading(text: str, size: int = 2):
+    """Big title line (<h2>-style). Falls back to a bold paragraph."""
+    cls = getattr(types, "InputRichBlockSectionHeading", None)
+    if cls is not None:
+        return cls(text=text, size=size)
+    return types.InputRichBlockParagraph(text=types.RichTextBold(text=text))
+
+
+def _as_list(x):
+    return x if isinstance(x, list) else [x]
+
+
+async def send_queued(message, chat_id, position, file, user_html, lang):
+    """Rich "Added to Queue" message: big heading, bullet lines and the
+    Play Now / Close buttons. Edits `message` (the placeholder); returns the
+    Message, or None so the caller sends the classic version."""
+    if not (RICH_OK and QUEUE_ENABLED):
+        return None
+    try:
+        bold = types.RichTextBold
+        title = types.RichTextUrl(text=file.title, url=file.url) if file.url else file.title
+        blocks = [
+            _heading("Added to Queue"),
+            types.InputRichBlockParagraph(text=["• Track: ", title]),
+            types.InputRichBlockParagraph(
+                text=["• Position: ", bold(text=str(position)),
+                      "  |  Duration: ", bold(text=str(file.duration))]
+            ),
+            types.InputRichBlockParagraph(
+                text=["• Requested by: "] + _as_list(_inline(user_html))
+            ),
+            types.InputRichBlockButtons(
+                buttons=[
+                    _btn(lang.get("play_now", "Play Now"), S.SUCCESS,
+                         f"controls force {chat_id} {file.id}"),
+                    _btn(lang.get("close", "Close"), S.DANGER,
+                         f"controls close {chat_id}"),
+                ]
+            ),
+        ]
+        try:
+            return await _edit(message, blocks) or message
+        except errors.MessageNotModified:
+            return message
+        except Exception:
+            try:
+                await message.delete()
+            except Exception:
+                pass
+            return await _send(chat_id, blocks)
+    except Exception as e:
+        logger.warning("[Rich] send_queued failed in %s: %r - falling back", chat_id, e,
+                       exc_info=True)
+        return None
 
 
 async def finish_menu(chat_id, message_id, caption_html) -> bool:
