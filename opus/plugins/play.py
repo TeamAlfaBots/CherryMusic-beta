@@ -103,7 +103,8 @@ async def play_hndlr(
         if position != 0 or await db.get_call(m.chat.id):
             # Rich Message "Added to Queue"; classic message is the fallback
             if not await rich.send_queued(
-                sent, m.chat.id, position, file, m.from_user.mention, m.lang
+                sent, m.chat.id, position, file, m.from_user.mention, m.lang,
+                items=queue.get_queue(m.chat.id),
             ):
                 await sent.edit_text(
                     m.lang["play_queued"].format(
