@@ -29,8 +29,8 @@ ACCENT_SOFT = (255, 150, 205)
 WHITE = (255, 255, 255)
 BG_DARK = (8, 4, 12)
 
-BRAND = "Tulip"                  # "Tulip Now Playing"
-WATERMARK = "TulipMusic  •  Powered by AlfaBots"
+BRAND = "CherryMusic"                  # "Tulip Now Playing"
+WATERMARK = "CherryMusic •  Powered by AlfaBots"
 
 SIZE = (1280, 720)
 
