@@ -27,7 +27,15 @@ BASE = Path(__file__).resolve().parent.parent
 PRELOAD_THUMB = str(BASE / "assets" / "preload.png")  # image path ya URL
 PLAYLIST_DIR = BASE / "locales" / "playlists"
 TITLE = "Preloaded Songs"
-TEXT = "Discover your favorite tracks from our exclusive preloaded music library. Please select any one list and play nonstop songs🍒 Handpicked song collections🎵 Multiple music categories🔁 Continuous playlist playback"
+TEXT = (
+    "𝘋𝘪𝘴𝘤𝘰𝘷𝘦𝘳 𝘠𝘰𝘶𝘳 𝘧𝘢𝘷𝘰𝘳𝘪𝘵𝘦 𝘵𝘳𝘢𝘤𝘬𝘴 𝘧𝘳𝘰𝘮 𝘰𝘶𝘳 𝘦𝘹𝘤𝘭𝘶𝘴𝘪𝘷𝘦 𝘱𝘳𝘦𝘭𝘰𝘢𝘥𝘦𝘥 𝘮𝘶𝘴𝘪𝘤 𝘭𝘪𝘣𝘳𝘢𝘳𝘺.\n"
+    "<blockquote expandable>"
+    "<b>𝘗𝘭𝘦𝘢𝘴𝘦 𝘴𝘦𝘭𝘦𝘤𝘵 𝘢𝘯𝘺 𝘰𝘯𝘦 𝘱𝘭𝘢𝘺𝘭𝘪𝘴𝘵 𝘢𝘯𝘥 𝘦𝘯𝘫𝘰𝘺 𝘯𝘰𝘯𝘴𝘵𝘰𝘱 𝘴𝘰𝘯𝘨</b>\n"
+    "<b>✤ 𝘏𝘢𝘯𝘥𝘱𝘪𝘤𝘬𝘦𝘥 𝘚𝘰𝘯𝘨 𝘊𝘰𝘭𝘭𝘦𝘤𝘵𝘪𝘰𝘯</b>\n"
+    "<b>✤ 𝘔𝘶𝘭𝘵𝘪𝘱𝘭𝘦 𝘔𝘶𝘴𝘪𝘤 𝘊𝘢𝘵𝘦𝘨𝘰𝘳𝘪𝘦𝘴</b>\n"
+    "<b>✤ 𝘊𝘰𝘯𝘵𝘪𝘯𝘶𝘰𝘶𝘴 𝘗𝘭𝘢𝘺𝘭𝘪𝘴𝘵 𝘗𝘭𝘢𝘺𝘣𝘢𝘤𝘬</b>"
+    "</blockquote>"
+)
 
 # (button ka naam, json file ka naam)
 PAGE_1 = [
