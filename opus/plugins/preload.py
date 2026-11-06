@@ -27,22 +27,22 @@ BASE = Path(__file__).resolve().parent.parent
 PRELOAD_THUMB = str(BASE / "assets" / "preload.png")  # image path ya URL
 PLAYLIST_DIR = BASE / "locales" / "playlists"
 TITLE = "Preloaded Songs"
-TEXT = "Please select any one list and play nonstop songs"
+TEXT = "Discover your favorite tracks from our exclusive preloaded music library. Please select any one list and play nonstop songs🍒 Handpicked song collections🎵 Multiple music categories🔁 Continuous playlist playback"
 
 # (button ka naam, json file ka naam)
 PAGE_1 = [
-    ("Owner Playlist", "owner_playlist"),
-    ("Owner Playlist 2", "owner_playlist_2"),
-    ("English", "english"),
-    ("Bollywood Hits", "bollywood_hits"),
-    ("90s Hits", "hits_90s"),
-    ("Party Songs", "party_songs"),
+    ("𝐎𝗐𝗇𝖾𝗋 𝐏𝗅𝖺𝗒𝗅𝗂𝗌𝗍", "owner_playlist"),
+    ("𝐎𝗐𝗇𝖾𝗋 𝐏𝗅𝖺𝗒𝗅𝗂𝗌𝗍 2", "owner_playlist_2"),
+    ("𝐄𝗇𝗀𝗅𝗂𝗌 𝐒𝗈𝗇𝗀𝗌", "english"),
+    ("𝐁𝗈𝗅𝗅𝗒𝗐𝗈𝗈𝖽 𝐇𝗂𝗍𝗌", "bollywood_hits"),
+    ("90 𝐇𝗂𝗍𝗌", "hits_90s"),
+    ("𝐏𝖺𝗋𝗍𝗒 𝐒𝗈𝗇𝗀𝗌", "party_songs"),
 ]
 PAGE_2 = [
-    ("Sad Songs", "sad_songs"),
-    ("Love Songs", "love_songs"),
-    ("Bhojpuri", "bhojpuri"),
-    ("Top Cover Songs", "top_cover_songs"),
+    ("𝐒𝖺𝖽 𝐒𝗈𝗇𝗀𝗌", "sad_songs"),
+    ("𝐋𝗈𝗏𝖾 𝐒𝗈𝗇𝗀𝗌", "love_songs"),
+    ("𝐁𝗁𝗈𝗃𝗉𝗎𝗋𝗂 𝐒𝗈𝗇𝗀𝗌", "bhojpuri"),
+    ("𝐓𝗈𝗉𝐂𝗈𝗏𝖾𝗋 𝐒𝗈𝗇𝗀𝗌", "top_cover_songs"),
 ]
 LABELS = dict((key, name) for name, key in PAGE_1 + PAGE_2)
 
