@@ -28,9 +28,9 @@ except ImportError:
 # OpusKey1, OpusKey2, OpusKey3 ... set karo. URL secret nahi hai isliye
 # yahin rakha hai.
 API_URLS = [
-    "https://api.shrutibots.site",
-    "https://api01.shrutibots.site",
-    "https://api01.shrutibots.site",
+    "https://api.shrutibots.in",
+    "https://api.shrutibots.in",
+    "https://api.shrutibots.in",
 ]
 
 
