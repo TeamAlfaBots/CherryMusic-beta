@@ -53,17 +53,10 @@ def _load_apis():
 
 APIS = _load_apis()
 if not APIS:
-    logger.warning("Koi OpusKey set nahi hai, sirf yt-dlp/Saavn fallback chalega.")
-
-# Saavn — sabse aakhri fallback. Song *naam* se search karta hai (video ID se
-# nahi), isliye sirf tab kaam karta hai jab humare paas title ho (search se
-# aaye Track, ya URL-based request mein yt-dlp se mila title). YouTube ke
-# rate-limit/block wali windows mein temporary safety net ki tarah use hota
-# hai — proxy/cookie/Deno kuch nahi chahiye.
-SAAVN_API = os.getenv("SAAVN_API", "https://saavn-api-eight.vercel.app")
+    logger.warning("Koi OpusKey set nahi hai, sirf yt-dlp fallback chalega.")
 
 FAIL_THRESHOLD = 3
-BLOCK_DURATION = 5 * 3600  # 5 hours
+BLOCK_DURATION = 10 * 60  # 10 minutes
 # ─────────────────────────────────────────────────────────────
 
 DOWNLOAD_DIR = "downloads"
@@ -145,8 +138,8 @@ class YouTube:
         now = time.time()
 
         if now < self._blocked_until[aid]:
-            remaining = int((self._blocked_until[aid] - now) / 3600)
-            logger.info(f"[{self._api_label(api)}] Blocked! ~{remaining}h remaining.")
+            remaining = int((self._blocked_until[aid] - now) / 60) + 1
+            logger.info(f"[{self._api_label(api)}] Blocked! ~{remaining}m remaining.")
             return True
 
         if self._fail_count[aid] >= FAIL_THRESHOLD:
@@ -164,7 +157,7 @@ class YouTube:
 
         if self._fail_count[aid] >= FAIL_THRESHOLD:
             self._blocked_until[aid] = time.time() + BLOCK_DURATION
-            logger.warning(f"[{self._api_label(api)}] Blocked for 5 hours!")
+            logger.warning(f"[{self._api_label(api)}] Blocked for 10 minutes!")
 
     def _mark_success(self, api: dict):
         aid = self._api_id(api)
@@ -337,14 +330,9 @@ class YouTube:
             opts["format"] = "bestaudio"
 
         def run():
-            # FIX: 'with' block ab poora try ke andar hai. Pehle try sirf
-            # extract_info() ke around tha, isliye jab context manager
-            # __exit__ pe close()/save_cookies() chalta tha aur cookiefile
-            # corrupt/invalid format hone ki wajah se crash hota tha, wo
-            # exception yahan se bahar bubble ho jata tha aur poora
-            # download() (aur uske baad ka Saavn fallback) crash kar deta
-            # tha. Ab har tarah ka exception — extract_info ho ya cleanup —
-            # yahin pakda jayega.
+            # 'with' block poora try ke andar hai taaki extract_info ho ya
+            # cleanup/save_cookies, har exception yahin pakda jaye aur
+            # poora download() crash na kare.
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(url, download=True)
@@ -355,80 +343,12 @@ class YouTube:
 
         return await asyncio.to_thread(run)
 
-    async def saavn_download(self, title: str, video_id: str):
-        """
-        Aakhri fallback — YouTube ke saare tareeke (APIs + yt-dlp) fail ho
-        jayein tab hi chalta hai. Song naam se JioSaavn pe search karta hai,
-        video download nahi karta (Saavn sirf audio deta hai).
-        """
-        if not title:
-            logger.warning("[Saavn] Title nahi mila, skip.")
-            return None
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                # Step 1: naam se search
-                async with session.get(
-                    f"{SAAVN_API}/api/search/songs",
-                    params={"query": title, "limit": 1},
-                    timeout=aiohttp.ClientTimeout(total=15),
-                ) as resp:
-                    if resp.status != 200:
-                        logger.warning(f"[Saavn] Search status: {resp.status}")
-                        return None
-                    data = await resp.json()
-
-                results = (
-                    data.get("data", {}).get("results", [])
-                    if isinstance(data, dict)
-                    else []
-                )
-                if not results:
-                    logger.warning(f"[Saavn] Koi result nahi mila: {title}")
-                    return None
-
-                song = results[0]
-                download_urls = song.get("downloadUrl", [])
-                if not download_urls:
-                    logger.warning("[Saavn] downloadUrl missing in response.")
-                    return None
-
-                # Sabse high quality wala link (list ke aakhir mein hota hai)
-                stream_url = download_urls[-1].get("url")
-                if not stream_url:
-                    return None
-
-                # Step 2: stream download karke file mein save
-                os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-                filename = f"{DOWNLOAD_DIR}/{video_id}.mp3"
-
-                async with session.get(
-                    stream_url, timeout=aiohttp.ClientTimeout(total=60, connect=5)
-                ) as resp:
-                    if resp.status != 200:
-                        logger.warning(f"[Saavn] Stream status: {resp.status}")
-                        return None
-                    with open(filename, "wb") as f:
-                        async for chunk in resp.content.iter_chunked(131072):
-                            f.write(chunk)
-
-            if os.path.exists(filename) and os.path.getsize(filename) > 0:
-                logger.info(f"[Saavn] Download success ✓ ({title})")
-                return filename
-
-            logger.warning("[Saavn] Empty file!")
-        except Exception as e:
-            logger.warning(f"[Saavn] Error: {e}")
-
-        return None
-
     async def download(self, video_id: str, video: bool = False, title: str = None):
         # ── Step 1: Turso cache check ────────────────────────────
-        # Pehle dekho ki yeh song pehle se kisi cache DB mein hai
-        # ya nahi. Mil gaya to seedha disk pe likh ke return — na
-        # koi API call, na yt-dlp, na Saavn. Isse daily API limit
-        # (jaise 200/day) baar baar repeat hone wale songs par
-        # bilkul consume nahi hoti.
+        # Pehle dekho ki yeh song pehle se cache DB mein hai ya nahi.
+        # Mil gaya to seedha disk pe likh ke return — na koi API call,
+        # na yt-dlp. Isse daily API limit repeat songs par consume
+        # nahi hoti.
         cached = await self.cache.get(video_id)
         if cached and len(cached[1]) < MIN_MEDIA_BYTES:
             logger.warning(f"[TursoCache] Ignoring broken cache entry: {video_id}")
@@ -442,29 +362,19 @@ class YouTube:
             except Exception as e:
                 logger.warning(f"[TursoCache] Disk write error: {e}")
                 # disk write fail ho to bhi normal chain se download
-                # try karte hain, cache ka fayda na mile to bhi
-                # playback rukna nahi chahiye.
+                # try karte hain, playback rukna nahi chahiye.
 
-        # ── Step 2: normal fallback chain (jaisa pehle tha) ──────
+        # ── Step 2: normal fallback chain ────────────────────────
         file = await self.api_download(video_id, video)
 
         if not file:
             logger.warning("All APIs failed/blocked, falling back to yt-dlp")
             file = await self.ytdlp_download(video_id, video)
 
-        if not file and not video:
-            # Sirf audio ke liye — Saavn ke paas video nahi hota
-            logger.warning("yt-dlp bhi fail, Saavn fallback try kar rahe hain")
-            file = await self.saavn_download(title, video_id)
-
         # ── Step 3: file cache mein save karo (fire-and-forget) ──
-        # Yahan `await` NAHI karte — save ko background task ke
-        # roop mein chala dete hain aur turant `file` return kar
-        # dete hain. Isse user/playback ko Turso ke DB-write ka
-        # wait bilkul nahi karna padta; save chupchaap peeche
-        # chalta rehta hai, fail/full ho to bhi kisi ko pata nahi
-        # chalta aur agli baar wahi song mangne par woh cache mein
-        # mil jayega.
+        # `await` nahi karte — save background task mein chalta hai
+        # aur `file` turant return ho jaati hai, taaki playback ko
+        # Turso ke DB-write ka wait na karna pade.
         if file:
             ext = file.rsplit(".", 1)[-1] if "." in file else ("mp4" if video else "mp3")
             asyncio.create_task(self._save_to_cache(video_id, file, ext))
@@ -476,3 +386,4 @@ class YouTube:
             await self.cache.save(video_id, filepath, ext)
         except Exception as e:
             logger.warning(f"[TursoCache] Background save error: {e}")
+                
